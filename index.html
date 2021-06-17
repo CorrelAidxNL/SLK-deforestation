@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang='en'>
+
+<head>
+    <meta charset='utf-8' />
+    <title>Deforestation Heat Map</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v2.3.0/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v2.3.0/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div id='map'></div>
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic2xrb3Nvdm8iLCJhIjoiY2tuc3YwNjNuMTJnNDJ1cXdhazVydDZ2cSJ9.QEeEU3pdlV2hBg245jVTJg';
+        var map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/slkosovo/ckpih5kd242ei17l9rbbzkojz',
+            center: [20.939478832635327, 42.68797256641418],
+            zoom: 9,
+            maxZoom: 11.99,
+        });
+
+        // we will add more code here in the next steps
+
+        map.on('load', function() {
+            map.addSource('deforestation', {
+                type: 'geojson',
+                // Use a URL for the value for the `data` property.
+                data: 'LostForest_2000-2019_centroids.geojson'
+            });
+
+
+
+            map.addLayer({
+                id: 'deforestation-heat',
+                type: 'heatmap',
+                source: 'deforestation',
+                maxzoom: 12,
+                paint: {
+                    // increase weight as diameter breast height increases
+
+                    // increase intensity as zoom level increases
+                    'heatmap-intensity': {
+                        stops: [
+                            [11, 0.5],
+                            [15, 2]
+                        ]
+                    },
+                    // assign color values be applied to points depending on their density
+                    'heatmap-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['heatmap-density'],
+                        0, 'rgba(236,222,239,0)',
+                        0.2, 'rgb(255,241,195)',
+                        0.4, 'rgb(255,235,166)',
+                        0.6, 'rgb(255,228,136)',
+                        0.8, 'rgb(255,221,106)'
+                    ],
+                    // increase radius as zoom increases
+                    'heatmap-radius': {
+                        stops: [
+                            [11, 15],
+                            [15, 20]
+                        ]
+                    },
+                    
+                }
+            }, 'waterway-label');
+        });
+
+    </script>
+</body>
+
+</html>
