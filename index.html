@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+
+<head>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.1.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.1.1/mapbox-gl.css' rel='stylesheet' />
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id='map'></div>
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic2xrb3Nvdm8iLCJhIjoiY2tuc3YwNjNuMTJnNDJ1cXdhazVydDZ2cSJ9.QEeEU3pdlV2hBg245jVTJg';
+        var map = new mapboxgl.Map({
+            container: 'map', // container ID
+            style: 'mapbox://styles/slkosovo/ckpykihsv0q5v17pfmt6qhewr', // style URL
+            center: [20.6263,42.7749], // starting position [lng, lat]
+            zoom: 10 // starting zoom
+        });
+
+        map.addControl(new mapboxgl.NavigationControl());
+
+    </script>
+</body>
+
+</html>
