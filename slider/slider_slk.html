@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Slider</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.3.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.3.0/mapbox-gl.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, Sans-serif;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 20px;
+            line-height: 30px;
+        }
+
+        h2 {
+            font-size: 14px;
+            line-height: 20px;
+            margin-bottom: 10px;
+        }
+
+        a {
+            text-decoration: none;
+            color: #2dc4b2;
+        }
+
+        #console {
+            position: absolute;
+            width: 240px;
+            margin: 10px;
+            padding: 10px 20px;
+            background-color: white;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div id='map'></div>
+    <div id='console'>
+        <h1>Deforestation Area in Kosovo</h1>
+
+
+        <div class='session' id='sliderbar'>
+            <h2>Year: <label id='active-hour'>2001</label></h2>
+            <input id='slider' class='row' type='range' min='2001' max='2019' step='1' value='2001' />
+        </div>
+    </div>
+
+
+
+    <script type="text/javascript">
+        mapboxgl.accessToken = 'pk.eyJ1Ijoic2xrb3Nvdm8iLCJhIjoiY2tuc3YwNjNuMTJnNDJ1cXdhazVydDZ2cSJ9.QEeEU3pdlV2hBg245jVTJg';
+        var arrayOfYear = [
+            {
+                'year': '2001',
+                'color': '#FF5733'
+            },
+            {
+                'year': '2002',
+                'color': '#F9FF33'
+            },
+            {
+                'year': '2003',
+                'color': '#B8FF33'
+            },
+            {
+                'year': '2004',
+                'color': '#ABE7E3'
+            },
+            {
+                'year': '2005',
+                'color': '#D2E7AB'
+            },
+            {
+                'year': '2006',
+                'color': '#00FFEC'
+            },
+            {
+                'year': '2007',
+                'color': '#7CD1FE'
+            },
+            {
+                'year': '2008',
+                'color': '#F1BBFF'
+            },
+            {
+                'year': '2009',
+                'color': '#93AFFF'
+            },
+            {
+                'year': '2010',
+                'color': '#B0FC75'
+            },
+            {
+                'year': '2011',
+                'color': '#FC3D3D'
+            },
+            {
+                'year': '2012',
+                'color': '#F905FD'
+            },
+            {
+                'year': '2013',
+                'color': '#F9DEF5'
+            },
+            {
+                'year': '2014',
+                'color': '#FA688E'
+            },
+            {
+                'year': '2015',
+                'color': '#FFDA85'
+            },
+            {
+                'year': '2016',
+                'color': '#7ADFFF'
+            },
+            {
+                'year': '2017',
+                'color': '#FFD0EF'
+            },
+            {
+                'year': '2018',
+                'color': '#B657F7'
+            },
+            {
+                'year': '2019',
+                'color': '#B4B6E4'
+            },
+        ];
+
+        var map = new mapboxgl.Map({
+            container: 'map', // container element id
+            style: 'mapbox://styles/slkosovo/ckq27jxxd016z17rvsbr6jwqc',
+            center: [20.6263, 42.7749], // initial map center in [lon, lat]
+            zoom: 12
+        });
+
+        map.on('load', function () {
+            map.addLayer({
+                'id': `forest_layer`,
+                'type': 'fill',
+                source: {
+                    type: 'geojson',
+                    data: `https://rawcdn.githack.com/SLKosovo/slkosovo.github.io/9d68fc218477d0217277466d74d098472d9c69d5/map/slider/deforestation/merged_slk.geojson`
+                },
+                'layout': {},
+                'paint': {
+                    'fill-color': "#ffde24",
+                    'fill-opacity': 1
+                },
+            });
+
+            document.getElementById('slider').addEventListener('input', function (e) {
+                var currentYear = parseInt(e.target.value);
+                // update the map
+                map.setFilter(`forest_layer`, ['==', ['number', ['get', 'year']], currentYear]);
+
+                // update text in the UI
+                document.getElementById('active-hour').innerText = currentYear;
+            });
+        });
+
+    </script>
+
+</body>
+
+</html>
