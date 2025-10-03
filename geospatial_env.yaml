@@ -1,0 +1,37 @@
+name: geospatial-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Core Python
+  - python=3.11
+
+  # Geospatial libraries
+  - gdal
+  - rasterio
+  - geopandas
+  - shapely
+  - fiona
+  - pyproj
+  - rtree
+
+  # Data handling
+  - pandas
+  - numpy
+  - xarray
+  - dask
+
+  # Visualization
+  - matplotlib
+  - contextily
+  - folium
+  - cartopy
+
+  # Jupyter
+  - jupyterlab
+  - ipywidgets
+
+  # Optional (performance + formats)
+  - h5py
+  - netCDF4
+  - scikit-image
