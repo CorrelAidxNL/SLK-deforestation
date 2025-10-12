@@ -3,10 +3,9 @@ import numpy as np
 import rasterio
 import math
 
-FILE_PATH = "./files/S2/"
+FILE_PATH = "./files/S2_new/"
 FILE_SUFFIX = "Kosovo_S2_"  # "Kosovo_S2_"#"Kosovo_L8_B4B5_"
 
-RESOLUTION = 10
 NDVI_FOREST_TRESHOLD = 0.6
 
 
@@ -142,8 +141,4 @@ def get_subplots(years):
     fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows))
     return fig, axes
 
-
-# G3
-
-def pixels_to_ha(map, resolution=RESOLUTION):
-    return np.count_nonzero(~np.isnan(map)) * (resolution ^ resolution) / 10000
+#
