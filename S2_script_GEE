@@ -1,0 +1,53 @@
+// Load Kosovo shapefile (upload as an asset or use FAO GAUL/OSM boundaries) (using Import functionality of GEE)
+
+// Load S2 bands needed for NDVI 
+var s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+            .filterBounds(kosovo)
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))// removes >20% cloudy pictures
+            .select(['B4', 'B8', 'SCL']);
+
+
+// Cloud/shadow masking for Sentinel-2 SR
+function maskS2sr(image) {
+  // Select the scene classification band
+  var scl = image.select('SCL');
+  
+  // Keep only these classes as "clear":
+  // 4 = Vegetation, 5 = Bare soil, 6 = Water, 7 = Unclassified,
+  var mask = scl.eq(4)  // vegetation
+                .or(scl.eq(5)) // bare soil
+                .or(scl.eq(6)) // water
+                .or(scl.eq(7)) // unclassified
+
+  return image.updateMask(mask);
+}
+
+
+var years = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
+
+// Loop over years and make composites
+years.forEach(function(year) {
+  var start = year + '-01-01';
+  var end   = year + '-12-31';
+  
+  var composite = s2.filterDate(start, end)      // select only that year
+                    .map(maskS2sr)               // apply cloud/shadow mask
+                    .median()                    // take pixel-wise median
+                    .clip(kosovo)                // cut to Kosovo boundary
+                    .select(['B4', 'B8']);       // RED, NIR false-color NIR–Red–Red
+
+  
+  
+  Map.addLayer(
+    composite,
+    {bands: ['B8', 'B4'], min: 0, max: 3000},
+    'Sentinel-2 B4-B8 ' + year
+  );
+  Export.image.toDrive({
+    image: composite,
+    description: 'Kosovo_S2_B4B8_' + year,
+    scale: 10,
+    region: kosovo.geometry(),
+    maxPixels: 1e13
+  });
+});
