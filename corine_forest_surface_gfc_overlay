@@ -1,0 +1,120 @@
+// GEE file for calculating cumulative forest loss using Corine 2018 forest label and Hansen GFC dataset
+// TODO : import Kosovo shape file in 'kosovo' variable
+var years = [2022, 2023, 2024];
+
+
+
+// Load CORINE Land Cover 2018
+var corine = ee.Image("COPERNICUS/CORINE/V20/100m/2018").select('landcover');
+var corine_kosovo = corine.clip(kosovo);
+
+// (311=Broad-leaved, 312=Coniferous, 313=Mixed)
+var forestMask = corine_kosovo.eq(311)
+  .or(corine_kosovo.eq(312))
+  .or(corine_kosovo.eq(313))
+
+// Load GFC 
+var gfc = ee.Image('UMD/hansen/global_forest_change_2024_v1_12');
+
+
+;
+
+// Calculate Kosovo's total area
+var totalArea = ee.Image.pixelArea().reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: kosovo.geometry(),
+  scale: 100,
+  maxPixels: 1e13,
+  bestEffort: true
+});
+var kosovo_ha = ee.Number(totalArea.get('area')).divide(1e4);
+
+// Calculate forest area
+var forestArea = forestMask.multiply(ee.Image.pixelArea()).reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: kosovo.geometry(),
+  scale: 100,
+  maxPixels: 1e13,
+  bestEffort: true
+});
+
+console.log(forestArea)
+
+var forest_ha = ee.Number(forestArea.get('landcover')).divide(1e4);
+
+
+var forestPercent = forest_ha.divide(kosovo_ha).multiply(100);
+
+print(' Kosovo Total Area (ha) from shape file:', kosovo_ha);
+print('Forest Area (ha) from Corine:', forest_ha);
+print('Forest Coverage (%) from Corine :', forestPercent);
+
+Map.centerObject(kosovo, 8);
+Map.addLayer(forestMask.updateMask(forestMask), 
+  {palette: ['228B22']}, 
+  'Forest Coverage');
+
+
+
+var lossYear = gfc.select(['lossyear']).clip(kosovo.geometry());
+
+// Calculate forest loss for each year
+years.forEach(function(year) {
+  // Hansen years are encoded as 1-24 for 2001-2024
+  var hansenYear = year - 2000;
+  
+  // Create mask for losses in this specific year
+  var lossThisYear = lossYear.eq(hansenYear);
+  
+  // Combine with CORINE forest mask (only count loss where CORINE shows forest)
+  var forestLossThisYear = forestMask.and(lossThisYear);
+  
+  // Calculate area of forest loss
+  var lossArea = forestLossThisYear.multiply(ee.Image.pixelArea()).reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: kosovo.geometry(),
+    scale: 30, 
+    maxPixels: 1e13,
+    bestEffort: true
+  });
+  
+  var loss_ha = ee.Number(lossArea.get('landcover')).divide(1e4);
+
+  print('Year ' + year + ' - Forest Loss (ha):', loss_ha);
+
+  // Add layer for this year's loss
+  Map.addLayer(forestLossThisYear.updateMask(forestLossThisYear),
+    {palette: ['red']},
+    'Forest Loss ' + year,
+    false);
+});
+
+// Calculate total loss across all three years
+var loss2022_24 = lossYear.gte(22).and(lossYear.lte(24));
+var totalForestLoss = forestMask.and(loss2022_24);
+
+var totalLossArea = totalForestLoss.multiply(ee.Image.pixelArea()).reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: kosovo.geometry(),
+  scale: 30,
+  maxPixels: 1e13,
+  bestEffort: true
+});
+
+var totalLoss_ha = ee.Number(totalLossArea.get('landcover')).divide(1e4);
+
+print('-----------------------------------');
+print('Total Forest Loss 2022-2024 (ha):', totalLoss_ha);
+
+Map.centerObject(kosovo, 8);
+Map.addLayer(forestMask.updateMask(forestMask), 
+  {palette: ['228B22']}, 
+  'CORINE Forest Coverage');
+Map.addLayer(totalForestLoss.updateMask(totalForestLoss),
+  {palette: ['FF0000']},
+  'Total Forest Loss 2022-2024');
+Map.addLayer(kosovo, {color: 'red'}, 'Kosovo Boundary', false);
+
+
+
+
