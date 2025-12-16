@@ -1,0 +1,21 @@
+"<?xml version=""1.0"" encoding=""UTF-8""?>"
+"        <plist version=""1.0"">"
+          <dict>
+            <key>Vendor</key>
+            <string>www.envidat.ch</string>
+            <key>Protocol</key>
+            <string>s3</string>
+            <key>Nickname</key>
+            <string>chelsa02 - S3 Bucket</string>
+            <key>Hostname</key>
+            <string>os.zhdk.cloud.switch.ch</string>
+            <key>Port</key>
+            <string>443</string>
+            <key>Path</key>
+            <string>/chelsa02/chelsa/global/climatologies/</string>
+            <key>Username</key>
+            <string>anonymous</string>
+            <key>Comment</key>
+            <string>Downloaded from EnviDat S3 Browser</string>
+          </dict>
+        </plist>
