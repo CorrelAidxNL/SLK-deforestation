@@ -1,0 +1,768 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r, warning=FALSE}
+library("terra")
+library("sf")
+library("dplyr")
+library("mgcv")
+library("pROC")
+```
+
+
+
+```{r}
+# ===========================
+# Spatial logistic (robust) — R/terra + mgcv, custom spatial CV
+# + adds CISI + Modification predictors
+# ===========================
+
+# ---- 0) Packages ----
+#pkgs <- c("terra","sf","dplyr","mgcv","pROC")
+#inst <- pkgs[!(pkgs %in% installed.packages()[,"Package"])]
+#if (length(inst)) install.packages(inst, dependencies = TRUE)
+#invisible(lapply(pkgs, require, character.only = TRUE))
+
+# ---- 1) Paths ----
+y_dir    <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/1 Forest change 30m"
+topo_dir <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/9 elevation and slope 30m"
+clim_dir <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/6 CHELSA mean 1 km 30m"
+pop_dir  <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/7 Population mean 100m 30m"
+dist_dir <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/distances_30m_aligned"
+mod_dir  <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/6  Modification 30m"
+light_dir <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/7 Night light 30m"
+dist_road <- "C:/Users/oleks/Desktop/DEFORESTATION/2 Logistic regression/3 HARMONIZED DATA/10 road"
+
+
+
+
+
+
+# ---- 2) Tunables ----
+canopy_threshold <- 30
+loss_year_min <- 1
+loss_year_max <- 20
+n_per_class   <- 2000
+block_range_m <- 3000
+k_folds       <- 5
+set.seed(42)
+
+
+
+
+# ---- 3) Helpers ----
+sanitize_names <- function(files) {
+  nm <- tolower(basename(files))
+  nm <- sub("\\.tif(f)?$", "", nm)
+  gsub("[^a-z0-9]+","_", nm)
+}
+
+stack_from_dir <- function(dir, prefix = NULL) {
+  files <- list.files(dir, pattern="\\.tif(f)?$", full.names=TRUE, ignore.case=TRUE)
+  cat("\nFiles in", dir, ":\n")
+  print(files)
+
+  if (!length(files)) return(NULL)
+
+  r <- rast(files)
+  nm <- sanitize_names(files)
+  if (!is.null(prefix)) nm <- paste0(prefix, "_", nm)
+  names(r) <- make.unique(nm)
+  r
+}
+
+align_to <- function(r, ref, method="bilinear") {
+  if (is.null(r)) return(NULL)
+  if (!same.crs(r, ref)) r <- project(r, crs(ref))
+  resample(r, ref, method=method)
+}
+
+to_utm_crs <- function(xy_sf) {
+  ctr <- st_coordinates(st_centroid(st_as_sfc(st_bbox(xy_sf))))
+  lon <- ctr[1]; lat <- ctr[2]
+  zone <- floor((lon + 180)/6) + 1
+  epsg <- if (lat >= 0) 32600 + zone else 32700 + zone
+  st_transform(xy_sf, paste0("EPSG:", epsg))
+}
+
+
+
+
+# helper to combine only non-NULL rasters
+c_nonnull <- function(...) {
+  lst <- list(...)
+  lst <- Filter(Negate(is.null), lst)
+  if (!length(lst)) return(NULL)
+  do.call(c, lst)
+}
+
+
+
+
+# ---- 4) Response (Y) from Hansen ----
+lossyear <- rast(file.path(y_dir, "Hansen_GFC-2024-v1.12_lossyear_50N_020E.tif"))
+tree2000 <- rast(file.path(y_dir, "Hansen_GFC-2024-v1.12_treecover2000_50N_020E.tif"))
+datamask <- rast(file.path(y_dir, "Hansen_GFC-2024-v1.12_datamask_50N_020E.tif"))
+
+forest2000 <- (tree2000 > canopy_threshold) & (datamask == 1)
+
+y_bin <- app(lossyear, fun = function(v) as.integer(v >= loss_year_min & v <= loss_year_max))
+y_bin <- mask(y_bin, forest2000)
+
+# ---- 5) Predictors: load, align, combine, drop zero-variance ----
+X_topo <- align_to(stack_from_dir(topo_dir, "topo"), y_bin, method="bilinear")
+X_clim <- align_to(stack_from_dir(clim_dir, "clim"), y_bin, method="bilinear")
+X_pop  <- align_to(stack_from_dir(pop_dir,  "pop"),  y_bin, method="bilinear")
+X_dist <- align_to(stack_from_dir(dist_dir, "dist"), y_bin, method="bilinear")
+X_light <- align_to(stack_from_dir(light_dir, "light"), y_bin, method="bilinear")
+X_road <- align_to(stack_from_dir(dist_road, "road"), y_bin, method="bilinear")
+X_mod  <- align_to(stack_from_dir(mod_dir,  "mod"),  y_bin, method="bilinear")
+
+
+
+preds <- c_nonnull(X_topo, X_clim, X_pop, X_dist, X_mod, X_light, X_road)
+if (is.null(preds)) stop("No predictor rasters were found. Check your directories.")
+
+
+
+
+
+# Drop layers that are all NA or constant (using global range)
+gr <- terra::global(preds, fun="range", na.rm=TRUE)
+if (is.null(gr)) stop("Predictors have no valid range; check alignment/coverage.")
+
+gr_df <- as.data.frame(gr)
+keep <- with(gr_df, is.finite(min) & is.finite(max) & (max - min) > 0)
+
+if (!any(keep)) stop("All predictors appear constant or invalid after alignment.")
+preds <- preds[[which(keep)]]
+
+cat("\nPredictor layers kept:\n")
+print(names(preds))
+
+
+
+
+
+
+# ---- 6) Stratified sample of pixels (within forest mask) ----
+vals <- values(y_bin, mat=FALSE)
+
+pos_cells <- which(vals == 1)
+neg_cells <- which(vals == 0)
+
+if (!length(pos_cells)) stop("No positive (loss) pixels found in the specified year range.")
+if (!length(neg_cells)) stop("No negative (no-loss) pixels found in mask.")
+
+i_pos <- sample(pos_cells, min(length(pos_cells), n_per_class))
+i_neg <- sample(neg_cells, min(length(neg_cells), n_per_class))
+cells <- c(i_pos, i_neg)
+
+xy  <- xyFromCell(y_bin, cells)
+pts <- vect(data.frame(x=xy[,1], y=xy[,2]), geom=c("x","y"), crs=crs(y_bin))
+
+Xdat <- terra::extract(preds, pts, ID=FALSE)
+
+dat <- cbind(
+  y      = as.integer(vals[cells]),
+  as.data.frame(Xdat),
+  xcoord = xy[,1],
+  ycoord = xy[,2]
+)
+
+dat <- na.omit(dat)
+cat("\nTraining rows after NA removal:", nrow(dat), "\n")
+if (length(unique(dat$y)) < 2) stop("Only one class present after NA removal; lower canopy threshold or increase sample size.")
+
+
+
+
+
+
+# ---- 7) Build spatial blocks (custom, no blockCV) ----
+pts_sf  <- st_as_sf(dat, coords=c("xcoord","ycoord"), crs=crs(y_bin))
+pts_utm <- to_utm_crs(pts_sf)
+utm_xy  <- st_coordinates(pts_utm)
+
+gx <- floor((utm_xy[,1] - min(utm_xy[,1])) / block_range_m)
+gy <- floor((utm_xy[,2] - min(utm_xy[,2])) / block_range_m)
+block_id <- interaction(gx, gy, drop=TRUE)
+
+set.seed(42)
+uniq_blocks <- levels(block_id)
+fold_map <- setNames(sample(rep(1:k_folds, length.out=length(uniq_blocks))), uniq_blocks)
+dat$fold <- fold_map[as.character(block_id)]
+
+
+# If any fold has a weak TRAIN set, reassign it into a good fold
+fold_ok <- rep(TRUE, k_folds)
+for (i in 1:k_folds) {
+  tr <- which(dat$fold != i)
+  if (length(tr) < 200 || length(unique(dat$y[tr])) < 2) fold_ok[i] <- FALSE
+}
+if (!all(fold_ok)) {
+  bad <- which(!fold_ok)
+  cat("\nFolds with insufficient training diversity:", bad, "\n")
+  good <- which(fold_ok)
+  for (b in bad) dat$fold[dat$fold == b] <- sample(good, 1)
+}
+
+
+
+
+
+
+# ---- 8) GAM formula(s) and spatial CV ----
+pred_names <- setdiff(names(dat), c("y","fold","xcoord","ycoord"))
+
+smooth_terms <- paste0("s(", pred_names, ", k=5)")
+form_spatial   <- as.formula(paste("y ~", paste(c(smooth_terms, "s(xcoord, ycoord, k=70)"), collapse=" + ")))
+form_nospatial <- as.formula(paste("y ~", paste(smooth_terms, collapse=" + ")))
+
+cv_auc <- rep(NA_real_, k_folds)
+
+for (i in 1:k_folds) {
+  te <- which(dat$fold == i)
+  tr <- which(dat$fold != i)
+
+  # guards
+  if (length(tr) < 200 || length(unique(dat$y[tr])) < 2) next
+  if (length(unique(dat$y[te])) < 2) {
+    cat(sprintf("Fold %d: test set has only one class -> AUC=NA\n", i))
+    next
+  }
+
+  fit_i <- mgcv::gam(form_spatial, data=dat[tr,], family=binomial(), method="REML")
+
+  p_i <- predict(fit_i, newdata=dat[te,], type="response")
+  cv_auc[i] <- as.numeric(pROC::auc(response = dat$y[te], predictor = p_i))
+
+  cat(sprintf("Fold %d: train=%d, test=%d, AUC=%.3f\n", i, length(tr), length(te), cv_auc[i]))
+}
+
+cat(sprintf("\nMean spatial CV AUC: %.3f (sd=%.3f)\n",
+            mean(cv_auc, na.rm=TRUE),
+            sd(cv_auc, na.rm=TRUE)))
+
+
+
+
+
+# ---- 9) Fit final model (NO spatial smooth) ----
+fit <- mgcv::gam(
+  form_nospatial,
+  data   = dat,
+  family = binomial(),
+  method = "REML",
+  select = TRUE,
+  gamma  = 1.2
+)
+
+print(summary(fit))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+terra::global(preds, "range", na.rm = TRUE)
+cor(dat$tasmax_mean_2000_2020, dat$elevation_30m, use = "complete.obs")
+cor(dat$tasmax_mean_2000_2020, dat$pr_mean_2000_2020, use = "complete.obs")
+```
+
+
+
+
+
+fit <- mgcv::gam(
+  y ~
+    s(elevation_30m,             k = 10) +
+    s(slope_deg_30m,             k = 10) +
+    s(pr_mean_2000_2020,         k = 20) +  # ↑
+    s(tasmax_mean_2000_2020,     k = 20) +  # ↑
+    s(tasmin_mean_2000_2020,     k = 20) +  # ↑
+    s(vpd_mean_2000_2020,        k = 20) +  # ↑
+    s(population_mean_2000_2020, k = 10) +
+    s(dist_agricultural_areas,   k = 10) +
+    s(dist_artificial_surfaces,  k = 15) +  # small bump
+    s(dist_water_bodies,         k = 15) +  # ↑
+    s(xcoord, ycoord,            k = 150),  # ↑ spatial
+  data   = dat,
+  family = binomial(link = "logit"),
+  method = "REML",
+  select = TRUE,
+  gamma  = 1.2
+)
+
+
+print(summary(fit))
+
+
+
+
+#################################################################################
+STEP 1 RESIDUALS CHECK
+#################################################################################
+
+
+```{r}
+## 1. Get deviance residuals from your GAM
+res_dev <- residuals(fit, type = "deviance")  # or type = "pearson"
+
+## 2. Set up plotting area: 1 row, 2 columns
+op <- par(mfrow = c(1, 2))  # save old par to restore later
+
+## 3. Histogram of deviance residuals
+hist(
+  res_dev,
+  breaks = 40,                 # adjust if you want more/less detail
+  main   = "Deviance residuals",
+  xlab   = "Residual",
+  freq   = FALSE                # show density, not counts
+)
+lines(density(res_dev), lwd = 2)
+
+## 4. QQ-plot of deviance residuals vs Normal
+qqnorm(
+  res_dev,
+  main = "QQ-plot of deviance residuals"
+)
+qqline(res_dev, col = 2, lwd = 2)
+
+## 5. Restore old plotting parameters
+par(op)
+```
+
+
+
+
+
+```{r}
+res_dev <- residuals(fit, type = "deviance")
+
+# y is a column in dat
+res0 <- res_dev[dat$y == 0]
+res1 <- res_dev[dat$y == 1]
+
+par(mfrow = c(1, 2))
+hist(res0, breaks = 40, main = "Deviance residuals (y = 0)", xlab = "Residual")
+hist(res1, breaks = 40, main = "Deviance residuals (y = 1)", xlab = "Residual")
+par(mfrow = c(1, 1))
+```
+
+
+
+
+```{r}
+res_dev <- residuals(fit, type = "deviance")
+fit_prob <- fitted(fit)  # or predict(fit, type = "response")
+
+plot(fit_prob, res_dev,
+     xlab = "Fitted probability",
+     ylab = "Deviance residual",
+     main = "Residuals vs fitted")
+abline(h = 0, lty = 2)
+```
+
+
+
+
+
+
+
+
+```{r}
+dev <- deviance(fit)
+df  <- df.residual(fit)
+dispersion <- dev / df
+dispersion
+```
+
+
+
+
+
+
+
+
+```{r}
+# Deviance residuals from the GAM
+dat$res_dev <- residuals(fit, type = "deviance")
+
+# choose numeric predictors only
+num_vars <- names(Filter(is.numeric, dat))
+
+# drop response and coordinates (and residual itself)
+pred_vars <- setdiff(num_vars, c("y", "xcoord", "ycoord", "res_dev"))
+
+# check what will be plotted
+pred_vars
+
+```
+
+
+
+```{r}
+par(mfrow = c(1, 3))
+
+plot(dat$elevation_30m, dat$res_dev,
+     xlab = "tasmax", ylab = "Deviance residual",
+     main = "Residuals vs elevation")
+abline(h = 0, lty = 2)
+
+plot(dat$slope, dat$res_dev,
+     xlab = "slope", ylab = "Deviance residual",
+     main = "Residuals vs slope")
+abline(h = 0, lty = 2)
+
+plot(dat$pr, dat$res_dev,
+     xlab = "pr", ylab = "Deviance residual",
+     main = "Residuals vs pr")
+abline(h = 0, lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+
+
+```{r}
+par(mfrow = c(1, 3))
+
+plot(dat$tasmax_mean_2000_2020, dat$res_dev,
+     xlab = "tasmax", ylab = "Deviance residual",
+     main = "Residuals vs elevation")
+abline(h = 0, lty = 2)
+
+plot(dat$tasmin_mean_2000_2020, dat$res_dev,
+     xlab = "tasmin", ylab = "Deviance residual",
+     main = "Residuals vs slope")
+abline(h = 0, lty = 2)
+
+plot(dat$vpd_mean_2000_2020, dat$res_dev,
+     xlab = "vpd", ylab = "Deviance residual",
+     main = "Residuals vs pr")
+abline(h = 0, lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+
+
+
+```{r}
+par(mfrow = c(1, 3))
+
+plot(dat$population_mean_2000_2020, dat$res_dev,
+     xlab = "population", ylab = "Deviance residual",
+     main = "Residuals vs elevation")
+abline(h = 0, lty = 2)
+
+plot(dat$dist_agricultural_areas, dat$res_dev,
+     xlab = "dist_agri", ylab = "Deviance residual",
+     main = "Residuals vs slope")
+abline(h = 0, lty = 2)
+
+plot(dat$dist_artificial_surfaces, dat$res_dev,
+     xlab = "dist_arti", ylab = "Deviance residual",
+     main = "Residuals vs pr")
+abline(h = 0, lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#################################################################################
+STEP 2 
+#################################################################################
+
+
+```{r}
+# Smooth summary table
+sm_tab <- summary(fit)$s.table
+sm_tab
+```
+
+
+
+```{r}
+sm_df <- as.data.frame(sm_tab)
+
+# flag smooths whose edf is very close to their Ref.df (say > 90%)
+sm_df$near_max <- sm_df$edf > 0.9 * sm_df$Ref.df
+sm_df[, c("edf", "Ref.df", "near_max")]
+```
+
+
+
+```{r}
+library(mgcv)
+
+k.check(fit)
+```
+
+
+```{r}
+gam.check(fit)
+```
+
+
+
+
+
+
+
+```{r}
+fit2 <- mgcv::gam(
+  y ~
+    s(elevation_30m,             k = 10) +
+    s(slope_deg_30m,             k = 10) +
+    s(pr_mean_2000_2020,         k = 20) +  # ↑
+    s(tasmax_mean_2000_2020,     k = 20) +  # ↑
+    s(tasmin_mean_2000_2020,     k = 20) +  # ↑
+    s(vpd_mean_2000_2020,        k = 20) +  # ↑
+    s(population_mean_2000_2020, k = 10) +
+    s(dist_agricultural_areas,   k = 10) +
+    s(dist_artificial_surfaces,  k = 15) +  # small bump
+    s(dist_water_bodies,         k = 15) +  # ↑
+    s(xcoord, ycoord,            k = 150),  # ↑ spatial
+  data   = dat,
+  family = binomial(link = "logit"),
+  method = "REML",
+  select = TRUE,
+  gamma  = 1.2
+)
+print(summary(fit))
+```
+
+
+
+```{r}
+gam.check(fit2)
+```
+
+
+
+
+
+```{r}
+par(mfrow = c(3, 3))
+plot(fit2, pages = 3, shade = TRUE)
+par(mfrow = c(1, 1))
+```
+
+
+
+
+
+
+
+```{r}
+library(mgcv)
+
+# basic concurvity summary
+cc <- concurvity(fit2, full = FALSE)
+cc
+```
+
+
+
+
+```{r}
+cc$estimate
+```
+
+
+
+```{r}
+E <- cc$estimate
+diag(E) <- NA  # ignore self-concurvity
+which(E > 0.8, arr.ind = TRUE)
+E[E > 0.8]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#################################################################################
+STEP 2 AUTOCORRELATION
+#################################################################################
+
+
+```{r}
+# Pearson residuals (better for correlation tests)
+dat$res_pearson <- residuals(fit2, type = "pearson")
+
+
+# install.packages("ggplot2")  # if needed
+library(ggplot2)
+
+ggplot(dat, aes(x = xcoord, y = ycoord, colour = res_pearson)) +
+  geom_point(alpha = 0.4, size = 0.6) +
+  coord_equal() +
+  scale_colour_gradient2(
+    name = "Pearson\nresidual",
+    midpoint = 0
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Spatial pattern of Pearson residuals",
+    x = "xcoord", y = "ycoord"
+  )
+
+```
+
+
+
+
+```{r}
+
+library(spdep)
+
+coords <- cbind(dat$xcoord, dat$ycoord)
+
+# 8-nearest neighbours
+knn   <- knearneigh(coords, k = 8)
+nb    <- knn2nb(knn)
+lw    <- nb2listw(nb, style = "W")  # row-standardised weights
+
+# Moran's I test
+moran.test(dat$res_pearson, lw)
+```
+
+```{r}
+set.seed(123)
+moran.mc(dat$res_pearson, lw, nsim = 199)
+```
+
+
+
+
+```{r}
+# install.packages(c("sp", "gstat"))  # if needed
+library(sp)
+library(gstat)
+
+# make a SpatialPointsDataFrame copy so we don't touch original dat
+dat_sp <- dat
+coordinates(dat_sp) <- ~ xcoord + ycoord
+
+# empirical variogram of residuals
+vg_res <- variogram(res_pearson ~ 1, dat_sp)  # ~1 = no trend
+plot(vg_res, main = "Empirical variogram of Pearson residuals")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

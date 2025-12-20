@@ -1,0 +1,63 @@
+
+
+
+================================================================================
+# REGRESSION VARIABLES
+================================================================================
+
+
+-----------------------
+OUTCOME:
+Tree cover loss 2000-2020 (30*30m)    {https://storage.googleapis.com/earthenginepartners-hansen/GFC-2020-v1.8/download.html}
+
+
+
+----------------------
+PREDICTORS
+Socio-economic factors:
+	- Human Modification AG=agricultural (https://zenodo.org/records/16907328)
+	- Human Modification BU=residential (https://zenodo.org/records/16907328)
+	- Human Modification BU=residential (https://zenodo.org/records/16907328)
+	- Human Modification EX=energy production and mining (https://zenodo.org/records/16907328)
+	- Human Modification FR=biological resource use (https://zenodo.org/records/16907328)
+	- Human Modification HI=human accessibility (https://zenodo.org/records/16907328)
+	- Human Modification NS=natural systems modification (https://zenodo.org/records/16907328)
+	- Human Modification PO=pollution (https://zenodo.org/records/16907328)
+	- Human Modification TI=transportation and service corridors (https://zenodo.org/records/16907328)
+
+	- Global NPP-VIIRS-like nighttime light (urbanization) (Harvard Dataverse via doi:10.7910/DVN/YGIVCD)
+
+	- population (Population {https://hub.worldpop.org/geodata/listing?id=29})
+
+                                           
+ 
+Biophysical factors:
+	- pr precipitation  {https://www.chelsa-climate.org/datasets/chelsa_monthly}
+	- spei {https://www.chelsa-climate.org/datasets/chelsa_monthly}
+
+        - Slope (static) (30m)              {https://portal.opentopography.org/raster?opentopoID=OTSDEM.092022.3035.1}                   
+        - Elevation (static) (30m)           {https://portal.opentopography.org/raster?opentopoID=OTSDEM.092022.3035.1}
+
+
+
+
+Proximity-related factors (computed by Euclidean distance algorithm)
+
+	- distances to roads (https://download.geofabrik.de/europe/kosovo.html?utm_source=chatgpt.com)
+
+     - Distance agricultural areas		{https://viewer.esa-worldcover.org/worldcover/?language=en&bbox=20.29647547210252,42.27398637656299,21.307780637305456,42.63104283887685&overlay=false&bgLayer=OSM&date=2025-12-20&layer=WORLDCOVER_2020_MAP}
+     - Distance builtup area			{https://viewer.esa-worldcover.org/worldcover/?language=en&bbox=20.29647547210252,42.27398637656299,21.307780637305456,42.63104283887685&overlay=false&bgLayer=OSM&date=2025-12-20&layer=WORLDCOVER_2020_MAP}
+     - Distance permanent Water Bodies		{https://viewer.esa-worldcover.org/worldcover/?language=en&bbox=20.29647547210252,42.27398637656299,21.307780637305456,42.63104283887685&overlay=false&bgLayer=OSM&date=2025-12-20&layer=WORLDCOVER_2020_MAP}
+     - Distance grasslands			{https://viewer.esa-worldcover.org/worldcover/?language=en&bbox=20.29647547210252,42.27398637656299,21.307780637305456,42.63104283887685&overlay=false&bgLayer=OSM&date=2025-12-20&layer=WORLDCOVER_2020_MAP}
+
+
+
+
+
+
+
+
+
+
+
+
