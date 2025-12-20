@@ -22,24 +22,33 @@ from time import sleep
 ###################################################################
 # 1. List of input txt files and their corresponding output folders
 ###################################################################
+#tasks = [
+    #{
+        #"txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\tasmax.txt",
+        #"output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\1 tasmax"
+    #},
+    #{
+        #"txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\tasmin.txt",
+        #"output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\2 tasmin"
+    #},
+    #{
+        #"txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\vpd.txt",
+        #"output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\3 vpd"
+    #},
+    #{
+        #"txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\pr.txt",
+        #"output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\4 pr"
+    #},
+#]
+
+
 tasks = [
-    {
-        "txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\tasmax.txt",
-        "output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\1 tasmax"
-    },
-    {
-        "txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\tasmin.txt",
-        "output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\2 tasmin"
-    },
-    {
-        "txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\cmi.txt",
-        "output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\3 cmi"
-    },
-    {
-        "txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\pr.txt",
-        "output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\4 pr"
+        {
+        "txt_file": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\spei12.txt",
+        "output_folder": r"C:\Users\oleks\Desktop\DEFORESTATION\2 Logistic regression\1 RAW DATA\5 CHELSA 1 km\4 spei"
     },
 ]
+
 
 
 ###################################################################
